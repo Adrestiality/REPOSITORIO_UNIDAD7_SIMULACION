@@ -2,12 +2,84 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
     <meta name="color-scheme" content="dark" />
-    <title>Template Base</title>
+    <title>ACV · Word as a Playable System</title>
+    <meta name="description" content="Sistema tipográfico jugable 2D interactivo para la identidad de ACV (Agnostic Consulting Value)." />
+    <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.js"></script>
+    <div id="app-container">
+      <!-- Top UI Navigation Header -->
+      <header id="ui-header">
+        <div class="brand-badge">
+          <span class="brand-title">ACV</span>
+          <span class="brand-sub">Unidad 7 · Simulación</span>
+        </div>
+
+        <nav class="level-nav" aria-label="Selector de Niveles">
+          <button class="level-btn active" data-level="A" title="Nivel 1: Agnostic">
+            <span class="check-dot"></span>
+            <span>A · AGNOSTIC</span>
+          </button>
+          <button class="level-btn" data-level="C" title="Nivel 2: Consulting">
+            <span class="check-dot"></span>
+            <span>C · CONSULTING</span>
+          </button>
+          <button class="level-btn" data-level="V" title="Nivel 3: Value">
+            <span class="check-dot"></span>
+            <span>V · VALUE</span>
+          </button>
+        </nav>
+
+        <div class="header-actions">
+          <button id="sound-btn" class="action-btn" title="Alternar Sonido" aria-label="Sonido">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            </svg>
+          </button>
+          <button id="reset-btn" class="action-btn" title="Reiniciar Nivel (R)" aria-label="Reiniciar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Canvas Playable Area -->
+      <main id="canvas-wrapper"></main>
+
+      <!-- Bottom HUD Concept & Shortcuts -->
+      <footer id="ui-bottom">
+        <div class="level-concept-card">
+          <div class="concept-letter" id="concept-letter">A</div>
+          <div class="concept-title" id="concept-title">A · AGNOSTIC</div>
+          <div class="concept-desc" id="concept-desc">
+            Mentalidad sin ataduras: interactúa con el prisma para refractar soluciones múltiples hacia los receptores tecnológicos.
+          </div>
+        </div>
+
+        <div class="keyboard-hints">
+          <span><span class="key-pill">1</span> <span class="key-pill">2</span> <span class="key-pill">3</span> Niveles</span>
+          <span><span class="key-pill">R</span> Reiniciar</span>
+          <span><span class="key-pill">Drag / Clic</span> Interactuar</span>
+        </div>
+      </footer>
+
+      <!-- Level Completion Modal Banner -->
+      <div id="completion-banner" role="dialog" aria-modal="true">
+        <div class="completion-letter">A</div>
+        <div class="completion-title">NIVEL COMPLETADO</div>
+        <button id="banner-next-btn" class="completion-btn">SIGUIENTE ETAPA →</button>
+      </div>
+
+      <!-- Fade Curtain for Seamless Scene Transitions -->
+      <div id="transition-curtain"></div>
+    </div>
+
+    <!-- Main Module Entry Point -->
+    <script type="module" src="./main.js"></script>
   </body>
 </html>

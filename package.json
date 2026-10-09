@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "matter-js": "^0.20.0",
+    "p5": "^2.3.4",
     "three": "0.185.1"
   },
   "devDependencies": {
