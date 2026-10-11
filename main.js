@@ -1,203 +1,91 @@
 /**
- * main.js - Core Game Manager & State Controller for ACV Playable Typographic System
- * 
- * Manages modular level lifecycles, transitions, audio feedback, and UI navigation.
+ * main.js - Gestor Principal de Estados y Etapas (ACV Playable System)
+ *
+ * Administra el ciclo de vida de las tres etapas continuas:
+ * Stage A (Agnostic), Stage C (Consulting), Stage V (Value).
  */
 
-import { LevelA } from './level-A/levelA.js';
-import { LevelC } from './level-C/levelC.js';
-import { LevelV } from './level-V/levelV.js';
+import { StageA } from './stage-A/stageA.js';
+import { StageC } from './stage-C/stageC.js';
+import { StageV } from './stage-V/stageV.js';
 
-// Minimal Web Audio Synthesizer for tactile feedback
-class SoundSynth {
-  constructor() {
-    this.ctx = null;
-    this.muted = false;
-  }
-
-  init() {
-    if (!this.ctx) {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      this.ctx = new AudioContext();
-    }
-    if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
-    }
-  }
-
-  playClick() {
-    if (this.muted) return;
-    this.init();
-    if (!this.ctx) return;
-
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(600, this.ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(150, this.ctx.currentTime + 0.05);
-
-    gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.05);
-
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-    osc.start();
-    osc.stop(this.ctx.currentTime + 0.05);
-  }
-
-  playSuccessChord() {
-    if (this.muted) return;
-    this.init();
-    if (!this.ctx) return;
-
-    // Elegant harmonic chord (C Major 9 or Pentatonic harmonics: 440Hz, 554.37Hz, 659.25Hz, 880Hz)
-    const freqs = [440, 554.37, 659.25, 880];
-    freqs.forEach((freq, idx) => {
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-
-      gain.gain.setValueAtTime(0.001, this.ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.08 / (idx + 1), this.ctx.currentTime + 0.08);
-      gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 1.2);
-
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(this.ctx.currentTime + idx * 0.04);
-      osc.stop(this.ctx.currentTime + 1.3);
-    });
-  }
-}
+// Variable global donde se almacena el cliente seleccionado en la Etapa A
+window.selectedClient = null;
 
 class GameManager {
   constructor() {
     this.container = document.querySelector('#canvas-wrapper');
     this.curtain = document.querySelector('#transition-curtain');
-    this.completionBanner = document.querySelector('#completion-banner');
-    this.conceptLetter = document.querySelector('#concept-letter');
-    this.conceptTitle = document.querySelector('#concept-title');
-    this.conceptDesc = document.querySelector('#concept-desc');
-    
-    this.synth = new SoundSynth();
+    this.nextBtn = document.querySelector('#next-stage-btn');
 
-    this.levelDefinitions = [
-      { id: 'A', class: LevelA, name: 'A', title: 'A · AGNOSTIC', desc: 'Mentalidad abierta y flexible. Desbloquea el prisma para refractar soluciones múltiples hacia los receptores tecnológicos.' },
-      { id: 'C', class: LevelC, name: 'C', title: 'C · CONSULTING', desc: 'Análisis y filtrado. Rota la apertura del lente para clasificar el caos de problemas en Transformación Digital e Innovación.' },
-      { id: 'V', class: LevelV, name: 'V', title: 'V · VALUE', desc: 'Articulación de valor. Posiciona la red de aliados expertos para canalizar y concentrar las demandas en el vértice de entrega.' }
+    this.stages = [
+      { id: 'A', name: 'A · AGNOSTIC', class: StageA },
+      { id: 'C', name: 'C · CONSULTING', class: StageC },
+      { id: 'V', name: 'V · VALUE', class: StageV }
     ];
 
-    this.currentLevelIndex = 0;
-    this.currentLevelInstance = null;
-    this.completedLevels = new Set();
+    this.currentStageIndex = 0;
+    this.currentStageInstance = null;
     this.isTransitioning = false;
 
-    this.initUI();
     this.initKeyboard();
-    this.loadLevel(0);
-  }
-
-  initUI() {
-    // Level selector buttons
-    document.querySelectorAll('.level-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const levelKey = btn.getAttribute('data-level');
-        const idx = this.levelDefinitions.findIndex(l => l.id === levelKey);
-        if (idx !== -1 && idx !== this.currentLevelIndex) {
-          this.synth.playClick();
-          this.switchLevel(idx);
-        }
-      });
-    });
-
-    // Reset button
-    const resetBtn = document.querySelector('#reset-btn');
-    if (resetBtn) {
-      resetBtn.addEventListener('click', () => {
-        this.synth.playClick();
-        this.resetCurrentLevel();
-      });
-    }
-
-    // Audio toggle button
-    const soundBtn = document.querySelector('#sound-btn');
-    if (soundBtn) {
-      soundBtn.addEventListener('click', () => {
-        this.synth.muted = !this.synth.muted;
-        soundBtn.style.opacity = this.synth.muted ? '0.4' : '1.0';
-      });
-    }
-
-    // Banner Next button
-    const bannerNextBtn = document.querySelector('#banner-next-btn');
-    if (bannerNextBtn) {
-      bannerNextBtn.addEventListener('click', () => {
-        this.synth.playClick();
-        this.hideCompletionBanner();
-        const nextIdx = (this.currentLevelIndex + 1) % this.levelDefinitions.length;
-        this.switchLevel(nextIdx);
-      });
-    }
+    this.loadStage(0);
   }
 
   initKeyboard() {
     window.addEventListener('keydown', (e) => {
       if (this.isTransitioning) return;
-
-      if (e.key === '1') this.switchLevel(0);
-      else if (e.key === '2') this.switchLevel(1);
-      else if (e.key === '3') this.switchLevel(2);
-      else if (e.key === 'r' || e.key === 'R') this.resetCurrentLevel();
-      else if (e.key === ' ') {
-        // Space acts as primary impulse or action
-        if (this.completionBanner && this.completionBanner.classList.contains('visible')) {
-          const nextIdx = (this.currentLevelIndex + 1) % this.levelDefinitions.length;
-          this.hideCompletionBanner();
-          this.switchLevel(nextIdx);
-        }
-      }
+      if (e.key === '1') this.switchStage(0);
+      else if (e.key === '2') this.switchStage(1);
+      else if (e.key === '3') this.switchStage(2);
+      else if (e.key === 'r' || e.key === 'R') this.resetCurrentStage();
     });
   }
 
-  loadLevel(index) {
-    this.currentLevelIndex = index;
-    const def = this.levelDefinitions[index];
+  loadStage(index) {
+    this.currentStageIndex = index;
+    const stageDef = this.stages[index];
 
-    // Update Concept HUD Card
-    if (this.conceptLetter) this.conceptLetter.textContent = def.name;
-    if (this.conceptTitle) this.conceptTitle.textContent = def.title;
-    if (this.conceptDesc) this.conceptDesc.textContent = def.desc;
-
-    // Update Nav Bar Active State
-    document.querySelectorAll('.level-btn').forEach(btn => {
-      const key = btn.getAttribute('data-level');
-      btn.classList.toggle('active', key === def.id);
+    // Actualizar indicador superior
+    document.querySelectorAll('.stage-pill').forEach(pill => {
+      pill.classList.remove('active');
     });
+    const activePill = document.querySelector(`#pill-${stageDef.id}`);
+    if (activePill) activePill.classList.add('active');
 
-    // Instantiate and initialize level
-    this.currentLevelInstance = new def.class();
-    this.currentLevelInstance.init(this.container, (event) => this.handleLevelComplete(event));
+    // Configurar texto del botón siguiente
+    if (this.nextBtn) {
+      const nextDef = this.stages[(index + 1) % this.stages.length];
+      const btnText = this.nextBtn.querySelector('span:first-child');
+      if (btnText) btnText.textContent = `STAGE ${nextDef.id}`;
+    }
+
+    // Instanciar etapa
+    this.currentStageInstance = new stageDef.class();
+    this.currentStageInstance.init(this.container, (event) => {
+      this.handleStageComplete(event);
+    });
   }
 
-  switchLevel(index) {
+  switchStage(index) {
     if (this.isTransitioning) return;
     this.isTransitioning = true;
-    this.hideCompletionBanner();
 
-    // Trigger curtain fade-out
+    if (this.nextBtn) {
+      this.nextBtn.classList.remove('visible');
+    }
+
+    // Cortinilla de transición
     if (this.curtain) this.curtain.classList.add('active');
 
     setTimeout(() => {
-      // Destroy old level
-      if (this.currentLevelInstance) {
-        this.currentLevelInstance.destroy();
-        this.currentLevelInstance = null;
+      if (this.currentStageInstance) {
+        this.currentStageInstance.destroy();
+        this.currentStageInstance = null;
       }
 
-      // Load new level
-      this.loadLevel(index);
+      this.loadStage(index);
 
-      // Fade curtain back in
       setTimeout(() => {
         if (this.curtain) this.curtain.classList.remove('active');
         this.isTransitioning = false;
@@ -205,43 +93,25 @@ class GameManager {
     }, 350);
   }
 
-  resetCurrentLevel() {
-    if (this.currentLevelInstance && this.currentLevelInstance.reset) {
-      this.currentLevelInstance.reset();
+  handleStageComplete(event) {
+    console.log(`[ACV System] Stage ${event.stage} complete. Client:`, window.selectedClient);
+    const nextIdx = (this.currentStageIndex + 1) % this.stages.length;
+    this.switchStage(nextIdx);
+  }
+
+  resetCurrentStage() {
+    if (this.currentStageInstance && this.currentStageInstance.reset) {
+      this.currentStageInstance.reset();
     }
   }
 
-  handleLevelComplete(data) {
-    this.completedLevels.add(data.level);
-    this.synth.playSuccessChord();
-
-    // Mark check dot in UI
-    const navBtn = document.querySelector(`.level-btn[data-level="${data.level}"]`);
-    if (navBtn) navBtn.classList.add('completed');
-
-    // Show completion banner for intermediate levels A and C
-    if (data.level !== 'V') {
-      this.showCompletionBanner(data.level, data.title);
-    }
-  }
-
-  showCompletionBanner(letter, title) {
-    if (!this.completionBanner) return;
-    const letterEl = this.completionBanner.querySelector('.completion-letter');
-    const titleEl = this.completionBanner.querySelector('.completion-title');
-    if (letterEl) letterEl.textContent = letter;
-    if (titleEl) titleEl.textContent = `${title} COMPLETADO`;
-    this.completionBanner.classList.add('visible');
-  }
-
-  hideCompletionBanner() {
-    if (this.completionBanner) {
-      this.completionBanner.classList.remove('visible');
-    }
+  resetGame() {
+    window.selectedClient = null;
+    this.switchStage(0);
   }
 }
 
-// Start Game Manager on DOM ready
+// Iniciar al cargar el DOM
 window.addEventListener('DOMContentLoaded', () => {
-  window.game = new GameManager();
+  window.gameManager = new GameManager();
 });
