@@ -157,16 +157,15 @@ export class StageA {
     }
   }
 
-  // Inverted Letter 'A' Basket ('∀') Geometry
+  // Inverted Letter 'A' Basket ('∀') Geometry - Centered
   calculateInvertedABasket() {
     const cx = this.width / 2;
 
     // Inverted A ('∀'):
-    // Apex is at the bottom
-    const apexY = this.height * 0.74;
-    // The two open legs branch upwards to form the basket opening
-    const topTipsY = this.height * 0.44;
-    const basketWidth = Math.min(this.width * 0.32, 280);
+    // Apex is at the bottom, tips open upwards, centered vertically
+    const apexY = this.height * 0.70;
+    const topTipsY = this.height * 0.40;
+    const basketWidth = Math.min(this.width * 0.28, 250);
 
     const leftTip = { x: cx - basketWidth / 2, y: topTipsY };
     const rightTip = { x: cx + basketWidth / 2, y: topTipsY };
@@ -198,8 +197,8 @@ export class StageA {
 
   initShapes() {
     const cx = this.width / 2;
-    const spawnY = this.height * 0.20;
-    const spacing = Math.min(this.width * 0.22, 140);
+    const spawnY = this.height * 0.22;
+    const spacing = Math.min(this.width * 0.18, 130);
 
     this.shapes = [
       {
@@ -448,6 +447,12 @@ export class StageA {
 
     // 6. Draw Centered Overlay ("AGNOSTIC") Floating in Exact Center of Screen
     if (this.agnosticAlpha > 0.01) {
+      // Dim the background scene to dark grey / low opacity so the word and white button pop
+      ctx.save();
+      ctx.fillStyle = `rgba(0, 0, 0, ${0.78 * this.agnosticAlpha})`;
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+
       this.drawCenteredOverlay(ctx, cx, cy);
     }
   }

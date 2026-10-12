@@ -29,7 +29,25 @@ class GameManager {
     this.isTransitioning = false;
 
     this.initKeyboard();
+    this.initNextButton();
     this.loadStage(0);
+  }
+
+  initNextButton() {
+    if (this.nextBtn) {
+      this.nextBtn.addEventListener('click', () => {
+        if (this.isTransitioning) return;
+        if (this.currentStageIndex === 2) {
+          if (this.currentStageInstance && this.currentStageInstance.triggerGrandFinale) {
+            this.currentStageInstance.triggerGrandFinale();
+          }
+          this.nextBtn.classList.remove('visible');
+          return;
+        }
+        const nextIdx = (this.currentStageIndex + 1) % this.stages.length;
+        this.switchStage(nextIdx);
+      });
+    }
   }
 
   initKeyboard() {
@@ -53,11 +71,14 @@ class GameManager {
     const activePill = document.querySelector(`#pill-${stageDef.id}`);
     if (activePill) activePill.classList.add('active');
 
-    // Configurar texto del botón siguiente
+    // Configurar texto del botón siguiente centrado
     if (this.nextBtn) {
-      const nextDef = this.stages[(index + 1) % this.stages.length];
       const btnText = this.nextBtn.querySelector('span:first-child');
-      if (btnText) btnText.textContent = `STAGE ${nextDef.id}`;
+      if (btnText) {
+        if (index === 0) btnText.textContent = 'STAGE C';
+        else if (index === 1) btnText.textContent = 'STAGE V';
+        else if (index === 2) btnText.textContent = 'VIEW VALUE';
+      }
     }
 
     // Instanciar etapa

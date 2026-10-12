@@ -91,16 +91,17 @@ canvas {
   font-weight: 600;
 }
 
-/* Minimalist Next Button Overlay */
+/* Centered Next Button Overlay (Directly under centered cards) */
 #next-stage-btn {
   position: absolute;
-  bottom: 36px;
-  right: 40px;
-  z-index: 20;
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  top: calc(50% + 72px);
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.75);
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
   color: #ffffff;
-  padding: 10px 22px;
+  padding: 12px 28px;
   border-radius: 999px;
   font-family: var(--font-mono);
   font-size: 11px;
@@ -108,23 +109,24 @@ canvas {
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   opacity: 0;
-  transform: translateY(10px);
   pointer-events: none;
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.1);
 }
 
 #next-stage-btn.visible {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateX(-50%) translateY(0);
   pointer-events: auto;
 }
 
 #next-stage-btn:hover {
   border-color: #ffffff;
-  background: rgba(255, 255, 255, 0.1);
-  transform: scale(1.05);
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateX(-50%) scale(1.05);
+  box-shadow: 0 0 24px rgba(255, 255, 255, 0.35);
 }
 
 /* Transition Curtain */

@@ -2,31 +2,33 @@
  * stageV.js - Stage V (Value - Strategic Alliance) & ACV Grand Finale
  *
  * 100% English.
- * Critical corrections based on Illustrationm.jpg:
- * 1. Asymmetric & Inclined 'V' Letterform:
- *    - Left arm originates high up on the left (where client rests).
- *    - Right arm terminates noticeably lower on the right (where ally rests).
- *    - Steep downward gravity slope from left to right.
- * 2. Single Ally Receptor on Right Platform with Up / Down Selector Arrows:
- *    - Single ally displayed on the platform.
- *    - Clickable Up (▲) and Down (▼) arrows to cycle between Circle, Triangle, and Square.
- * 3. Drag & Drop Bridge Mechanics:
- *    - Click and drag from client (left) to selected ally (right).
- *    - When connected, bridge adopts geometry according to the ally shape:
- *      * Circle Ally   -> Smooth Curve / Ramp (Curva / rampa suave).
- *      * Square Ally   -> Stepped Square Staircase (Escalera cuadrada / escalonada).
- *      * Triangle Ally -> Zig-Zag / Triangular Teeth (Dientes triangulares).
- * 4. Compatibility & Fall Physics:
- *    - Correct pairs:
- *      * Triangle Client -> Circle Ally (Smooth curve/ramp).
- *      * Square Client   -> Triangle Ally (Triangular teeth/zig-zag).
- *      * Circle Client   -> Square Ally (Square staircase).
- *    - If incorrect: Figure attempts to cross, loses grip midway, and falls into
- *      the deep apex of the 'V', shakes, and respawns safely on the left ledge.
- *    - If correct: Figure happily descends along bridge structure and unites with ally.
- * 5. Finale Screen:
- *    - Centered "VALUE" overlay card in exact center of the screen.
- *    - Grand Finale: "A · C · V" -> "AGNOSTIC CONSULTING VALUE" -> "↺ PLAY AGAIN".
+ *
+ * Technical Specifications:
+ * 1. Geometry of the Letter 'V' & Symmetrical Horizontal Centering:
+ *    - Left cliff is high up (height * 0.32).
+ *    - Right ally platform is lower down (height * 0.52).
+ *    - Apex is horizontally centered at width / 2 (height * 0.76).
+ *    - Left and right platforms are equidistant from center (cx - halfSpan, cx + halfSpan).
+ *
+ * 2. Strict & Unique 1-to-1 Compatibility Mapping (No figure repeats its own shape):
+ *    - Client CIRCLE   -> Ally TRIANGLE -> STRAIGHT RAMP    -> SUCCESS.
+ *    - Client TRIANGLE -> Ally SQUARE   -> ZIG-ZAG BRIDGE   -> SUCCESS.
+ *    - Client SQUARE   -> Ally CIRCLE   -> STEPPED STAIRS   -> SUCCESS.
+ *    - ANY OTHER COMBINATION -> ERROR / INCOMPATIBLE (falls freely offscreen and respawns).
+ *
+ * 3. Failure Animation:
+ *    - Figure attempts to cross, loses balance at ~36% progress.
+ *    - Free-falls through the 'V' abyss past the bottom of the screen (y > height + 100).
+ *    - Smoothly respawns back on the top-left ledge for another try.
+ *
+ * 4. UX Navigation:
+ *    - "VIEW VALUE" button centered directly under "VALUE" overlay card.
+ *    - Clicking it or waiting briefly transitions to the Grand Finale screen.
+ *
+ * 5. Grand Finale Screen:
+ *    - Official ACV logo with luminous white glow effect.
+ *    - Subtitle in title case: "Agnostic Consulting Value".
+ *    - Centered "↺ PLAY AGAIN" button that resets the experience cleanly.
  */
 
 export class StageV {
@@ -45,28 +47,35 @@ export class StageV {
     // Audio Context
     this.audioCtx = null;
 
+    // Next Stage Button
+    this.nextBtn = null;
+
+    // Official Logo Image
+    this.logoImg = new Image();
+    this.logoImg.src = './assets/logo.png';
+
     // Client from Stage A
     this.client = null;
-    this.correctAllyType = 'circle';
+    this.correctAllyType = 'triangle';
 
     // Ally Selector State (Circle, Triangle, Square)
     this.allyOptions = ['circle', 'triangle', 'square'];
-    this.selectedAllyIndex = 1; // Initialized to a non-matching option to encourage interaction
-    this.allySwitchAnim = 0; // Quick bounce animation on change
+    this.selectedAllyIndex = 0;
+    this.allySwitchAnim = 0;
 
     // Positions & Geometry
-    this.cliffLeft = { x: 0, y: 0, width: 76 };
+    this.cliffLeft = { x: 0, y: 0, width: 74 };
     this.vAbyss = {
       leftRim: { x: 0, y: 0 },
       apex: { x: 0, y: 0 },
       rightRim: { x: 0, y: 0 }
     };
-    this.rightPlatform = { x: 0, y: 0, width: 76 };
+    this.rightPlatform = { x: 0, y: 0, width: 74 };
 
     // Arrow button hitboxes
     this.upArrowBounds = { x: 0, y: 0, r: 24 };
     this.downArrowBounds = { x: 0, y: 0, r: 24 };
-    this.hoverTarget = null; // 'up' | 'down' | 'client' | 'ally' | null
+    this.hoverTarget = null; // 'up' | 'down' | 'client' | 'ally' | 'playAgain' | null
 
     // Client Avatar
     this.clientAvatar = {
@@ -77,9 +86,8 @@ export class StageV {
       startX: 0,
       startY: 0,
       rotation: 0,
-      state: 'idle', // 'idle' | 'crossing' | 'falling' | 'stuck' | 'returning' | 'completed'
+      state: 'idle', // 'idle' | 'crossing' | 'falling' | 'respawning' | 'completed'
       progress: 0,
-      stuckTimer: 0,
       opacity: 1.0
     };
 
@@ -88,6 +96,7 @@ export class StageV {
       active: false,
       isCorrect: false,
       targetAllyType: 'triangle',
+      bridgeType: 'ramp', // 'ramp' | 'zigzag' | 'staircase'
       buildProgress: 0,
       alpha: 1.0
     };
@@ -122,11 +131,13 @@ export class StageV {
     this.ctx = this.canvas.getContext('2d');
     this.container.appendChild(this.canvas);
 
-    const nextBtn = document.querySelector('#next-stage-btn');
-    if (nextBtn) nextBtn.classList.remove('visible');
+    this.nextBtn = document.querySelector('#next-stage-btn');
+    if (this.nextBtn) {
+      this.nextBtn.classList.remove('visible');
+    }
 
     // Retrieve client from Stage A (Circle, Triangle, or Square)
-    this.client = window.selectedClient || { type: 'triangle' };
+    this.client = window.selectedClient || { type: 'circle' };
     this.resolveCorrectAlly();
 
     // Start with an ally index that is different from correct to require player action
@@ -151,14 +162,20 @@ export class StageV {
     this.animId = requestAnimationFrame(this.loop);
   }
 
+  // Strict 1-to-1 Mapping:
+  // - Client CIRCLE   -> Ally TRIANGLE
+  // - Client TRIANGLE -> Ally SQUARE
+  // - Client SQUARE   -> Ally CIRCLE
   resolveCorrectAlly() {
-    const type = this.client ? this.client.type : 'triangle';
-    if (type === 'triangle') {
-      this.correctAllyType = 'circle'; // Triangle client -> Circle ally (smooth curve ramp)
+    const type = this.client ? this.client.type : 'circle';
+    if (type === 'circle') {
+      this.correctAllyType = 'triangle';
+    } else if (type === 'triangle') {
+      this.correctAllyType = 'square';
     } else if (type === 'square') {
-      this.correctAllyType = 'triangle'; // Square client -> Triangle ally (triangular teeth)
+      this.correctAllyType = 'circle';
     } else {
-      this.correctAllyType = 'square'; // Circle client -> Square ally (square staircase)
+      this.correctAllyType = 'triangle';
     }
   }
 
@@ -178,8 +195,8 @@ export class StageV {
     const osc = this.audioCtx.createOscillator();
     const gain = this.audioCtx.createGain();
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(520, this.audioCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(840, this.audioCtx.currentTime + 0.04);
+    osc.frequency.setValueAtTime(540, this.audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(880, this.audioCtx.currentTime + 0.04);
 
     gain.gain.setValueAtTime(0.04, this.audioCtx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, this.audioCtx.currentTime + 0.05);
@@ -196,16 +213,16 @@ export class StageV {
     const osc = this.audioCtx.createOscillator();
     const gain = this.audioCtx.createGain();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(160, this.audioCtx.currentTime);
-    osc.frequency.linearRampToValueAtTime(65, this.audioCtx.currentTime + 0.28);
+    osc.frequency.setValueAtTime(170, this.audioCtx.currentTime);
+    osc.frequency.linearRampToValueAtTime(60, this.audioCtx.currentTime + 0.32);
 
-    gain.gain.setValueAtTime(0.08, this.audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, this.audioCtx.currentTime + 0.30);
+    gain.gain.setValueAtTime(0.09, this.audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, this.audioCtx.currentTime + 0.34);
 
     osc.connect(gain);
     gain.connect(this.audioCtx.destination);
     osc.start();
-    osc.stop(this.audioCtx.currentTime + 0.31);
+    osc.stop(this.audioCtx.currentTime + 0.35);
   }
 
   playSuccessSound() {
@@ -240,18 +257,18 @@ export class StageV {
     this.canvas.height = rect.height * dpr;
     this.ctx.scale(dpr, dpr);
 
-    // 1. Asymmetric Inclined 'V' Geometry:
-    // Left arm starts high up on the left (height * 0.28)
-    // Apex sinks deep in the lower middle (height * 0.80)
-    // Right arm terminates NOTICEABLY LOWER on the right (height * 0.54)
-    const leftX = this.width * 0.16;
-    const leftY = this.height * 0.28;
+    const cx = this.width / 2;
+    // Symmetrical horizontal spread centered around width / 2
+    const halfSpan = Math.min(this.width * 0.34, 320);
 
-    const rightX = this.width * 0.82;
-    const rightY = this.height * 0.54;
+    const leftX = cx - halfSpan;
+    const leftY = this.height * 0.32;
 
-    const apexX = this.width * 0.46;
-    const apexY = this.height * 0.80;
+    const rightX = cx + halfSpan;
+    const rightY = this.height * 0.52;
+
+    const apexX = cx;
+    const apexY = this.height * 0.76;
 
     this.cliffLeft = {
       x: leftX,
@@ -290,7 +307,6 @@ export class StageV {
     this.clientAvatar.vy = 0;
     this.clientAvatar.state = 'idle';
     this.clientAvatar.progress = 0;
-    this.clientAvatar.stuckTimer = 0;
     this.clientAvatar.rotation = 0;
     this.clientAvatar.opacity = 1.0;
   }
@@ -309,7 +325,7 @@ export class StageV {
     const pos = this.getPointerPos(e);
 
     // Grand Finale screen: "PLAY AGAIN" button click
-    if (this.isGrandFinale && this.finaleTimer > 1.8) {
+    if (this.isGrandFinale && this.finaleTimer > 1.0) {
       const b = this.playAgainBtnBounds;
       if (
         pos.x >= b.x - b.w / 2 &&
@@ -324,7 +340,7 @@ export class StageV {
 
     if (this.hasCrossed) return;
 
-    // 1. Check Up Arrow click
+    // Up Arrow click
     const distUp = Math.hypot(pos.x - this.upArrowBounds.x, pos.y - this.upArrowBounds.y);
     if (distUp <= this.upArrowBounds.r) {
       if (this.clientAvatar.state === 'idle') {
@@ -334,7 +350,7 @@ export class StageV {
       return;
     }
 
-    // 2. Check Down Arrow click
+    // Down Arrow click
     const distDown = Math.hypot(pos.x - this.downArrowBounds.x, pos.y - this.downArrowBounds.y);
     if (distDown <= this.downArrowBounds.r) {
       if (this.clientAvatar.state === 'idle') {
@@ -344,7 +360,7 @@ export class StageV {
       return;
     }
 
-    // 3. Direct click on Ally shape to cycle
+    // Direct click on Ally shape to cycle
     const allyCenterY = this.rightPlatform.y - 22;
     const distAlly = Math.hypot(pos.x - this.rightPlatform.x, pos.y - allyCenterY);
     if (distAlly <= 26 && this.clientAvatar.state === 'idle') {
@@ -355,7 +371,7 @@ export class StageV {
 
     if (this.clientAvatar.state !== 'idle') return;
 
-    // 4. Start Drag from client figure
+    // Start Drag from client figure
     const distClient = Math.hypot(pos.x - this.clientAvatar.x, pos.y - this.clientAvatar.y);
     if (distClient <= 44) {
       this.isDragging = true;
@@ -389,25 +405,40 @@ export class StageV {
 
   updateHoverTarget(pos) {
     if (this.isGrandFinale) {
-      this.hoverTarget = null;
+      const b = this.playAgainBtnBounds;
+      if (
+        pos.x >= b.x - b.w / 2 &&
+        pos.x <= b.x + b.w / 2 &&
+        pos.y >= b.y - b.h / 2 &&
+        pos.y <= b.y + b.h / 2
+      ) {
+        this.hoverTarget = 'playAgain';
+        this.canvas.style.cursor = 'pointer';
+      } else {
+        this.hoverTarget = null;
+        this.canvas.style.cursor = 'default';
+      }
       return;
     }
 
     const distUp = Math.hypot(pos.x - this.upArrowBounds.x, pos.y - this.upArrowBounds.y);
     if (distUp <= this.upArrowBounds.r) {
       this.hoverTarget = 'up';
+      this.canvas.style.cursor = 'pointer';
       return;
     }
 
     const distDown = Math.hypot(pos.x - this.downArrowBounds.x, pos.y - this.downArrowBounds.y);
     if (distDown <= this.downArrowBounds.r) {
       this.hoverTarget = 'down';
+      this.canvas.style.cursor = 'pointer';
       return;
     }
 
     const distClient = Math.hypot(pos.x - this.clientAvatar.x, pos.y - this.clientAvatar.y);
     if (distClient <= 32) {
       this.hoverTarget = 'client';
+      this.canvas.style.cursor = 'grab';
       return;
     }
 
@@ -415,10 +446,12 @@ export class StageV {
     const distAlly = Math.hypot(pos.x - this.rightPlatform.x, pos.y - allyCenterY);
     if (distAlly <= 30) {
       this.hoverTarget = 'ally';
+      this.canvas.style.cursor = 'pointer';
       return;
     }
 
     this.hoverTarget = null;
+    this.canvas.style.cursor = 'default';
   }
 
   cycleAlly(dir) {
@@ -433,12 +466,36 @@ export class StageV {
 
   connectBridge() {
     const currentAlly = this.allyOptions[this.selectedAllyIndex];
-    const isCorrect = currentAlly === this.correctAllyType;
+    const clientType = this.client ? this.client.type : 'circle';
+
+    // Strict 1-to-1 matching rules:
+    // 1. Circle   -> Triangle (Ramp)
+    // 2. Triangle -> Square (Zig-zag)
+    // 3. Square   -> Circle (Staircase)
+    const isCorrect = (
+      (clientType === 'circle' && currentAlly === 'triangle') ||
+      (clientType === 'triangle' && currentAlly === 'square') ||
+      (clientType === 'square' && currentAlly === 'circle')
+    );
+
+    // Bridge shape defined by the solution of the selected ally:
+    // - Triangle ally -> 'ramp' (Rampa / Puente Recto)
+    // - Square ally   -> 'zigzag' (Puente en Zig-zag)
+    // - Circle ally   -> 'staircase' (Escalera / Puente Escalonado)
+    let bridgeType = 'ramp';
+    if (currentAlly === 'triangle') {
+      bridgeType = 'ramp';
+    } else if (currentAlly === 'square') {
+      bridgeType = 'zigzag';
+    } else if (currentAlly === 'circle') {
+      bridgeType = 'staircase';
+    }
 
     this.bridge = {
       active: true,
       isCorrect,
       targetAllyType: currentAlly,
+      bridgeType: bridgeType,
       buildProgress: 0,
       alpha: 1.0
     };
@@ -449,32 +506,55 @@ export class StageV {
     this.clientAvatar.startX = this.cliffLeft.x;
     this.clientAvatar.startY = this.cliffLeft.y - 18;
     this.clientAvatar.rotation = 0;
+    this.clientAvatar.opacity = 1.0;
   }
 
   // Calculates parametric position (x, y, rotation) along the bridge profile at progress t [0, 1]
-  getBridgeCoordinates(t, allyType) {
+  getBridgeCoordinates(t, bridgeType) {
     const startX = this.cliffLeft.x + this.cliffLeft.width / 2;
     const startY = this.cliffLeft.y;
     const endX = this.rightPlatform.x - this.rightPlatform.width / 2;
     const endY = this.rightPlatform.y;
 
-    if (allyType === 'circle') {
-      // 1. CURVE / RAMPA SUAVE (Smooth parabolic curve / ramp)
-      const midX = (startX + endX) * 0.5;
-      const midY = (startY + endY) * 0.5 + 32; // Natural gravitational catenary sag
-
-      const oneMinusT = 1 - t;
-      const x = oneMinusT * oneMinusT * startX + 2 * oneMinusT * t * midX + t * t * endX;
-      const y = oneMinusT * oneMinusT * startY + 2 * oneMinusT * t * midY + t * t * endY;
-
-      // Tangent derivative for rolling rotation
-      const dx = 2 * oneMinusT * (midX - startX) + 2 * t * (endX - midX);
-      const dy = 2 * oneMinusT * (midY - startY) + 2 * t * (endY - midY);
-      const rot = Math.atan2(dy, dx);
+    if (bridgeType === 'ramp') {
+      // 1. RAMPA / PUENTE RECTO (Ally: Triangle)
+      const x = startX + (endX - startX) * t;
+      const y = startY + (endY - startY) * t;
+      const baseRot = Math.atan2(endY - startY, endX - startX);
+      const isCircleClient = this.client && this.client.type === 'circle';
+      const rot = isCircleClient ? t * Math.PI * 6 : baseRot;
 
       return { x, y, rot };
-    } else if (allyType === 'square') {
-      // 2. ESCALERA CUADRADA / ESCALONADA (Stepped square staircase)
+    } else if (bridgeType === 'zigzag') {
+      // 2. PUENTE EN ZIG-ZAG (Ally: Square)
+      const teeth = 8;
+      const s = Math.max(0, Math.min(1, t)) * teeth;
+      const toothIdx = Math.min(teeth - 1, Math.floor(s));
+      const subT = s - toothIdx;
+
+      const toothWidth = (endX - startX) / teeth;
+      const toothHeight = 16;
+
+      let x, y, rot;
+      if (subT < 0.5) {
+        // Climbing tooth peak
+        const norm = subT / 0.5;
+        x = startX + (toothIdx + subT) * toothWidth;
+        const baseY = startY + (endY - startY) * ((x - startX) / (endX - startX));
+        y = baseY - norm * toothHeight;
+        rot = -0.32;
+      } else {
+        // Sliding down tooth valley
+        const norm = (subT - 0.5) / 0.5;
+        x = startX + (toothIdx + subT) * toothWidth;
+        const baseY = startY + (endY - startY) * ((x - startX) / (endX - startX));
+        y = baseY - (1 - norm) * toothHeight;
+        rot = 0.32;
+      }
+
+      return { x, y, rot };
+    } else {
+      // 3. ESCALERA / PUENTE ESCALONADO (Ally: Circle)
       const steps = 8;
       const s = Math.max(0, Math.min(1, t)) * steps;
       const stepIdx = Math.min(steps - 1, Math.floor(s));
@@ -492,42 +572,14 @@ export class StageV {
           rot: 0
         };
       } else {
-        // Vertical drop (riser)
+        // Vertical step drop (riser)
         const riserT = (subT - 0.70) / 0.30;
         return {
           x: startX + (stepIdx + 1) * dx,
           y: startY + (stepIdx + riserT) * dy,
-          rot: riserT * 0.25
+          rot: riserT * 0.22
         };
       }
-    } else {
-      // 3. ZIG-ZAG / DIENTES TRIANGULARES (Triangular teeth)
-      const teeth = 8;
-      const s = Math.max(0, Math.min(1, t)) * teeth;
-      const toothIdx = Math.min(teeth - 1, Math.floor(s));
-      const subT = s - toothIdx;
-
-      const toothWidth = (endX - startX) / teeth;
-      const toothHeight = 16;
-
-      let x, y, rot;
-      if (subT < 0.5) {
-        // Rising to tooth peak
-        const norm = subT / 0.5;
-        x = startX + (toothIdx + subT) * toothWidth;
-        const baseY = startY + (endY - startY) * ((x - startX) / (endX - startX));
-        y = baseY - norm * toothHeight;
-        rot = -0.32;
-      } else {
-        // Falling down tooth valley
-        const norm = (subT - 0.5) / 0.5;
-        x = startX + (toothIdx + subT) * toothWidth;
-        const baseY = startY + (endY - startY) * ((x - startX) / (endX - startX));
-        y = baseY - (1 - norm) * toothHeight;
-        rot = 0.32;
-      }
-
-      return { x, y, rot };
     }
   }
 
@@ -542,6 +594,13 @@ export class StageV {
       // Right diagonal wall
       const t = (x - v.apex.x) / (v.rightRim.x - v.apex.x);
       return v.apex.y + (v.rightRim.y - v.apex.y) * Math.max(0, Math.min(1, t));
+    }
+  }
+
+  triggerGrandFinale() {
+    this.isGrandFinale = true;
+    if (this.nextBtn) {
+      this.nextBtn.classList.remove('visible');
     }
   }
 
@@ -564,10 +623,10 @@ export class StageV {
 
     // 2. Bridge construction animation
     if (this.bridge.active) {
-      this.bridge.buildProgress = Math.min(1.0, this.bridge.buildProgress + dt * 3.2);
+      this.bridge.buildProgress = Math.min(1.0, this.bridge.buildProgress + dt * 3.4);
     }
 
-    // 3. Client trajectory & physics update
+    // 3. Client trajectory & falling physics update
     const ca = this.clientAvatar;
 
     if (ca.state === 'crossing') {
@@ -576,13 +635,13 @@ export class StageV {
       ca.progress += dt * speed;
 
       if (!isCorrect && ca.progress >= 0.36) {
-        // INCOMPATIBLE ALLY: Loses grip and falls into the deep apex of the 'V'!
+        // INCOMPATIBLE ALLY: Loses footing and plunges straight down into the abyss!
         ca.state = 'falling';
-        ca.vx = 45;
-        ca.vy = 80;
+        ca.vx = 55;
+        ca.vy = 90;
         this.playErrorSound();
       } else if (isCorrect && ca.progress >= 1.0) {
-        // CORRECT ALLY: Successfully arrives at destination!
+        // CORRECT ALLY: Reaches ally platform smoothly!
         ca.progress = 1.0;
         ca.state = 'completed';
         this.hasCrossed = true;
@@ -605,44 +664,39 @@ export class StageV {
       }
 
       if (ca.state === 'crossing') {
-        const coords = this.getBridgeCoordinates(ca.progress, this.bridge.targetAllyType);
+        const coords = this.getBridgeCoordinates(ca.progress, this.bridge.bridgeType);
         ca.x = coords.x;
         ca.y = coords.y - 18;
         ca.rotation = coords.rot;
       }
     } else if (ca.state === 'falling') {
-      // Downward gravity acceleration towards the apex of the 'V'
-      ca.vy += 850 * dt;
+      // Free falling down past the bottom of the screen (y > height + 100)
+      ca.vy += 1350 * dt;
       ca.x += ca.vx * dt;
       ca.y += ca.vy * dt;
-      ca.rotation += 7.0 * dt;
+      ca.rotation += 8.5 * dt;
 
-      const targetFloorY = this.vAbyss.apex.y - 14;
-      if (ca.y >= targetFloorY) {
-        ca.y = targetFloorY;
-        ca.vy = -ca.vy * 0.22; // Small elastic bounce
+      // Bridge dissolves while falling
+      this.bridge.alpha = Math.max(0, this.bridge.alpha - dt * 2.2);
+
+      // Once completely offscreen below the canvas, respawn smoothly on the left ledge
+      if (ca.y > this.height + 100) {
+        ca.state = 'respawning';
+        ca.opacity = 0;
+        ca.x = this.cliffLeft.x;
+        ca.y = this.cliffLeft.y - 18;
         ca.vx = 0;
-
-        if (Math.abs(ca.vy) < 40) {
-          ca.state = 'stuck';
-          ca.stuckTimer = 0;
-        }
+        ca.vy = 0;
+        ca.rotation = 0;
+        this.bridge.active = false;
+        this.bridge.alpha = 1.0;
       }
-    } else if (ca.state === 'stuck') {
-      // Wobbles and shakes at the bottom of the V due to incompatibility
-      ca.stuckTimer += dt;
-      ca.x = this.vAbyss.apex.x + Math.sin(ca.stuckTimer * 38) * 3.5;
-      ca.rotation = Math.sin(ca.stuckTimer * 28) * 0.2;
-
-      // After 0.85s, dissolves and safely respawns back on the left ledge
-      if (ca.stuckTimer > 0.85) {
-        ca.opacity = Math.max(0, ca.opacity - dt * 3.0);
-        this.bridge.alpha = Math.max(0, this.bridge.alpha - dt * 3.0);
-
-        if (ca.opacity <= 0) {
-          this.resetClientAvatar();
-          this.bridge.active = false;
-        }
+    } else if (ca.state === 'respawning') {
+      // Smooth fade-in back onto starting ledge
+      ca.opacity = Math.min(1.0, ca.opacity + dt * 3.2);
+      if (ca.opacity >= 1.0) {
+        ca.opacity = 1.0;
+        ca.state = 'idle';
       }
     }
 
@@ -655,14 +709,14 @@ export class StageV {
       if (sp.life <= 0) this.sparks.splice(i, 1);
     }
 
-    // 5. Centered "VALUE" Overlay Transition & Grand Finale
+    // 5. Centered "VALUE" Overlay Transition & Auto-advance to Grand Finale (No next button needed)
     if (this.hasCrossed) {
       this.valueAlpha = Math.min(1.0, this.valueAlpha + dt * 2.5);
 
       if (this.valueAlpha >= 1.0) {
         this.finaleTimer += dt;
-        if (this.finaleTimer > 1.8 && !this.isGrandFinale) {
-          this.isGrandFinale = true;
+        if (this.finaleTimer > 2.2 && !this.isGrandFinale) {
+          this.triggerGrandFinale();
         }
       }
     }
@@ -696,13 +750,13 @@ export class StageV {
       ctx.stroke();
     }
 
-    // Grand Finale Screen: "A C V"
+    // Grand Finale Screen with Official Logo & Glow
     if (this.isGrandFinale) {
       this.drawGrandFinale(ctx, w, h);
       return;
     }
 
-    // 3. Draw Monumental Asymmetric & Inclined 'V' Letterform
+    // 3. Draw Monumental Asymmetric & Symmetrically Centered 'V' Letterform
     this.drawAsymmetricVAbyss(ctx);
 
     // 4. Draw Left Cliff (Higher)
@@ -749,11 +803,17 @@ export class StageV {
 
     // 11. Centered Overlay ("VALUE") Floating in Exact Center of Screen
     if (this.valueAlpha > 0.01 && !this.isGrandFinale) {
+      // Dim remaining scene figures and V abyss to dark grey/opaque backdrop for maximum contrast
+      ctx.save();
+      ctx.fillStyle = `rgba(0, 0, 0, ${0.78 * this.valueAlpha})`;
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+
       this.drawCenteredOverlay(ctx, cx, cy);
     }
   }
 
-  // Draws the monumental Asymmetric & Inclined 'V'
+  // Draws the monumental Asymmetric & Horizontally Centered 'V'
   drawAsymmetricVAbyss(ctx) {
     const v = this.vAbyss;
 
@@ -763,7 +823,7 @@ export class StageV {
     ctx.lineJoin = 'round';
     ctx.strokeStyle = '#ffffff';
 
-    // Main V lines: Left rim (high) -> Apex (bottom) -> Right rim (lower)
+    // Main V lines: Left rim (high) -> Apex (bottom center) -> Right rim (lower)
     ctx.beginPath();
     ctx.moveTo(v.leftRim.x, v.leftRim.y);
     ctx.lineTo(v.apex.x, v.apex.y);
@@ -943,6 +1003,9 @@ export class StageV {
   }
 
   // Draws structured bridge anchored onto the walls of the 'V'
+  // - Triangle ally -> 'ramp' (Rampa / Puente Recto)
+  // - Square ally   -> 'zigzag' (Puente en Zig-zag)
+  // - Circle ally   -> 'staircase' (Escalera / Puente Escalonado)
   drawStructuredBridge(ctx) {
     const b = this.bridge;
     const startX = this.cliffLeft.x + this.cliffLeft.width / 2;
@@ -963,40 +1026,81 @@ export class StageV {
       ctx.shadowBlur = 10;
     }
 
-    if (b.targetAllyType === 'circle') {
-      // 1. CURVE / RAMPA SUAVE (for Circle Ally)
-      const midX = (startX + endX) * 0.5;
-      const midY = (startY + endY) * 0.5 + 32;
+    if (b.bridgeType === 'ramp') {
+      // 1. RAMPA / PUENTE RECTO (Triangle Ally)
+      const currentEndX = startX + (endX - startX) * prog;
+      const currentEndY = startY + (endY - startY) * prog;
 
       ctx.beginPath();
-      const numSegments = 40;
-      for (let i = 0; i <= numSegments * prog; i++) {
-        const t = i / numSegments;
-        const oneMinusT = 1 - t;
-        const x = oneMinusT * oneMinusT * startX + 2 * oneMinusT * t * midX + t * t * endX;
-        const y = oneMinusT * oneMinusT * startY + 2 * oneMinusT * t * midY + t * t * endY;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(currentEndX, currentEndY);
       ctx.stroke();
 
-      // Suspension / foundation struts down to the 'V'
+      // Truss struts down to the 'V'
       ctx.lineWidth = 1.0;
       ctx.strokeStyle = `rgba(255, 255, 255, ${0.2 * alpha})`;
-      for (let t = 0.15; t <= prog * 0.88; t += 0.12) {
-        const oneMinusT = 1 - t;
-        const x = oneMinusT * oneMinusT * startX + 2 * oneMinusT * t * midX + t * t * endX;
-        const y = oneMinusT * oneMinusT * startY + 2 * oneMinusT * t * midY + t * t * endY;
-        const vWallY = this.getVAbyssY(x);
-        if (vWallY > y) {
+      const segments = 6;
+      for (let i = 1; i <= segments * prog; i++) {
+        const t = i / segments;
+        const px = startX + (endX - startX) * t;
+        const py = startY + (endY - startY) * t;
+        const vWallY = this.getVAbyssY(px);
+        if (vWallY > py) {
           ctx.beginPath();
-          ctx.moveTo(x, y);
-          ctx.lineTo(x, vWallY);
+          ctx.moveTo(px, py);
+          ctx.lineTo(px, vWallY);
+          ctx.stroke();
+
+          // Diagonal strut
+          const prevX = startX + (endX - startX) * (t - 1 / segments);
+          ctx.beginPath();
+          ctx.moveTo(prevX, startY + (endY - startY) * (t - 1 / segments));
+          ctx.lineTo(px, vWallY);
           ctx.stroke();
         }
       }
-    } else if (b.targetAllyType === 'square') {
-      // 2. ESCALERA CUADRADA / ESCALONADA (for Square Ally)
+    } else if (b.bridgeType === 'zigzag') {
+      // 2. PUENTE EN ZIG-ZAG (Square Ally)
+      const teeth = 8;
+      const toothWidth = (endX - startX) / teeth;
+      const toothHeight = 16;
+      const totalRenderTeeth = Math.ceil(teeth * prog);
+
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+
+      for (let i = 0; i < totalRenderTeeth; i++) {
+        const x0 = startX + i * toothWidth;
+        const xMid = x0 + toothWidth * 0.5;
+        const x1 = x0 + toothWidth;
+
+        const baseYMid = startY + (endY - startY) * ((xMid - startX) / (endX - startX));
+        const baseYEnd = startY + (endY - startY) * ((x1 - startX) / (endX - startX));
+
+        // Peak
+        ctx.lineTo(xMid, baseYMid - toothHeight);
+        // Valley
+        ctx.lineTo(x1, baseYEnd);
+      }
+      ctx.stroke();
+
+      // Vertical/truss pilings down to the 'V'
+      ctx.lineWidth = 1.0;
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.2 * alpha})`;
+      for (let i = 0; i < totalRenderTeeth; i += 2) {
+        const xMid = startX + (i + 0.5) * toothWidth;
+        const baseYMid = startY + (endY - startY) * ((xMid - startX) / (endX - startX));
+        const py = baseYMid - toothHeight;
+        const vWallY = this.getVAbyssY(xMid);
+        if (vWallY > py) {
+          ctx.beginPath();
+          ctx.moveTo(xMid, py);
+          ctx.lineTo(xMid, vWallY);
+          ctx.stroke();
+        }
+      }
+    } else {
+      // 3. ESCALERA / PUENTE ESCALONADO (Circle Ally)
       const steps = 8;
       const dx = (endX - startX) / steps;
       const dy = (endY - startY) / steps;
@@ -1031,46 +1135,6 @@ export class StageV {
           ctx.stroke();
         }
       }
-    } else {
-      // 3. ZIG-ZAG / DIENTES TRIANGULARES (for Triangle Ally)
-      const teeth = 8;
-      const toothWidth = (endX - startX) / teeth;
-      const toothHeight = 16;
-      const totalRenderTeeth = Math.ceil(teeth * prog);
-
-      ctx.beginPath();
-      ctx.moveTo(startX, startY);
-
-      for (let i = 0; i < totalRenderTeeth; i++) {
-        const x0 = startX + i * toothWidth;
-        const xMid = x0 + toothWidth * 0.5;
-        const x1 = x0 + toothWidth;
-
-        const baseYMid = startY + (endY - startY) * ((xMid - startX) / (endX - startX));
-        const baseYEnd = startY + (endY - startY) * ((x1 - startX) / (endX - startX));
-
-        // Peak
-        ctx.lineTo(xMid, baseYMid - toothHeight);
-        // Valley
-        ctx.lineTo(x1, baseYEnd);
-      }
-      ctx.stroke();
-
-      // Truss struts down to the 'V'
-      ctx.lineWidth = 1.0;
-      ctx.strokeStyle = `rgba(255, 255, 255, ${0.2 * alpha})`;
-      for (let i = 0; i < totalRenderTeeth; i += 2) {
-        const xMid = startX + (i + 0.5) * toothWidth;
-        const baseYMid = startY + (endY - startY) * ((xMid - startX) / (endX - startX));
-        const py = baseYMid - toothHeight;
-        const vWallY = this.getVAbyssY(xMid);
-        if (vWallY > py) {
-          ctx.beginPath();
-          ctx.moveTo(xMid, py);
-          ctx.lineTo(xMid, vWallY);
-          ctx.stroke();
-        }
-      }
     }
 
     ctx.restore();
@@ -1078,7 +1142,7 @@ export class StageV {
 
   drawClientAvatar(ctx) {
     const ca = this.clientAvatar;
-    const type = this.client ? this.client.type : 'triangle';
+    const type = this.client ? this.client.type : 'circle';
 
     ctx.save();
     ctx.translate(ca.x, ca.y);
@@ -1154,47 +1218,64 @@ export class StageV {
     ctx.restore();
   }
 
-  // Grand Finale: 100% English ("A C V", "AGNOSTIC CONSULTING VALUE", "PLAY AGAIN")
+  // Grand Finale: Official ACV Logo with Glow + "Agnostic Consulting Value" + Centered "PLAY AGAIN"
   drawGrandFinale(ctx, w, h) {
     const cx = w / 2;
-    const cy = h * 0.42;
+    const cy = h * 0.44;
 
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // 1. "A  C  V"
-    ctx.font = '700 68px "Outfit", sans-serif';
+    // 1. Official ACV Logo with luminous white glow (prominently sized)
+    const logoSize = Math.min(w * 0.50, 310, h * 0.44);
+    const blockHeight = logoSize + 26 + 26 + 36 + 44;
+    const blockStartY = Math.max(20, (h - blockHeight) * 0.42);
+
+    const logoX = cx - logoSize / 2;
+    const logoY = blockStartY;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.95)';
+    ctx.shadowBlur = 30;
+
+    if (this.logoImg && this.logoImg.complete && this.logoImg.naturalWidth > 0) {
+      // First pass for intense white glow halo
+      ctx.drawImage(this.logoImg, logoX, logoY, logoSize, logoSize);
+      // Second pass for crisp inner brilliance
+      ctx.shadowBlur = 12;
+      ctx.drawImage(this.logoImg, logoX, logoY, logoSize, logoSize);
+    } else {
+      // Fallback in case image takes a moment to load
+      ctx.font = '700 64px "Outfit", sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('ACV', cx, logoY + logoSize / 2);
+    }
+    ctx.restore();
+
+    // 2. Identity: "Agnostic Consulting Value" (Title case, exactly as requested)
+    const textY = logoY + logoSize + 26;
+    ctx.font = '600 24px "Space Grotesk", sans-serif';
     ctx.fillStyle = '#ffffff';
     ctx.shadowColor = '#ffffff';
-    ctx.shadowBlur = 24;
-
-    const spacing = Math.min(w * 0.20, 110);
-    ctx.fillText('A', cx - spacing, cy);
-    ctx.fillText('C', cx, cy);
-    ctx.fillText('V', cx + spacing, cy);
-
-    ctx.font = '300 32px "Space Grotesk", sans-serif';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-    ctx.fillText('·', cx - spacing / 2, cy);
-    ctx.fillText('·', cx + spacing / 2, cy);
-
-    // 2. Identity: "AGNOSTIC CONSULTING VALUE" (Exclusively in English)
-    ctx.font = '600 22px "Space Grotesk", sans-serif';
-    ctx.fillStyle = '#ffffff';
-    ctx.shadowBlur = 10;
-    ctx.letterSpacing = '4px';
-    ctx.fillText('AGNOSTIC CONSULTING VALUE', cx, cy + 85);
+    ctx.shadowBlur = 14;
+    ctx.letterSpacing = '2px';
+    ctx.fillText('Agnostic Consulting Value', cx, textY);
 
     // 3. Button "PLAY AGAIN"
-    const btnY = cy + 180;
+    const btnY = textY + 54;
     const btnW = 180;
-    const btnH = 42;
+    const btnH = 44;
     this.playAgainBtnBounds = { x: cx, y: btnY, w: btnW, h: btnH };
 
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    const isHover = this.hoverTarget === 'playAgain';
+    ctx.fillStyle = isHover ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.1)';
+    ctx.strokeStyle = isHover ? '#ffffff' : 'rgba(255, 255, 255, 0.65)';
     ctx.lineWidth = 1.5;
+    if (isHover) {
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 18;
+    }
     ctx.beginPath();
     ctx.roundRect(cx - btnW / 2, btnY - btnH / 2, btnW, btnH, 999);
     ctx.fill();
@@ -1202,7 +1283,7 @@ export class StageV {
 
     ctx.font = '600 11px "JetBrains Mono", monospace';
     ctx.fillStyle = '#ffffff';
-    ctx.letterSpacing = '2px';
+    ctx.letterSpacing = '2.5px';
     ctx.fillText('↺ PLAY AGAIN', cx, btnY);
 
     ctx.restore();
@@ -1230,6 +1311,9 @@ export class StageV {
       window.removeEventListener('touchend', this.boundPointerUp);
       this.canvas.remove();
       this.canvas = null;
+    }
+    if (this.nextBtn) {
+      this.nextBtn.classList.remove('visible');
     }
     if (this.audioCtx) {
       this.audioCtx.close();

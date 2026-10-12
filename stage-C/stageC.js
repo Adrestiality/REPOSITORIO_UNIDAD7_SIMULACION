@@ -182,18 +182,18 @@ export class StageC {
     this.ctx.scale(dpr, dpr);
 
     const cx = this.width / 2;
-    // Scale center position
-    this.scaleCenter = { x: cx - 20, y: this.height * 0.44 };
-    this.bowlRadius = Math.min(this.width * 0.22, 160);
-    this.bowlDepth = this.bowlRadius * 0.85;
+    // Scale center position: exactly centered horizontally and vertically balanced
+    this.scaleCenter = { x: cx, y: this.height * 0.47 };
+    this.bowlRadius = Math.min(this.width * 0.20, 150);
+    this.bowlDepth = this.bowlRadius * 0.82;
 
     this.initSupplySources();
   }
 
   // Bottom-right supply sources (Frame 3 drawing)
   initSupplySources() {
-    const supplyBaseX = Math.min(this.width * 0.82, this.width - 130);
-    const supplyBaseY = this.height * 0.76;
+    const supplyBaseX = Math.min(this.width * 0.86, this.width - 100);
+    const supplyBaseY = this.height * 0.74;
 
     this.supplySources = [
       {
@@ -482,6 +482,12 @@ export class StageC {
 
     // 10. Exact Center Screen Overlay: "CONSULTING"
     if (this.consultingAlpha > 0.01) {
+      // Dim remaining scene figures and scale to dark grey/opaque backdrop for maximum contrast
+      ctx.save();
+      ctx.fillStyle = `rgba(0, 0, 0, ${0.78 * this.consultingAlpha})`;
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+
       this.drawCenteredOverlay(ctx, cx, cy);
     }
   }
